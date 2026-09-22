@@ -37,6 +37,7 @@ public:
   UIView* getView() override;
   void deleteView() override;
   UIImage* snapshot() override;
+  void captureNextFrame(void (^handler)(CVPixelBufferRef)) override;
   void layoutChanged() override;
   MLNBackendResource* getObject() override;
   // End implementation of MLNMapViewImpl

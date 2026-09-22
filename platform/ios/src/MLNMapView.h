@@ -1,3 +1,4 @@
+#import <CoreVideo/CoreVideo.h>
 #import <UIKit/UIKit.h>
 
 #import "MLNBackendResource.h"
@@ -531,6 +532,15 @@ MLN_EXPORT
  average It is recommended to first configure the pixelRatio before adjusting TileLodZoomShift.
  */
 @property (nonatomic, assign) double tileLodZoomShift;
+
+/**
+ Renders the map once more and hands that frame to `handler` as a BGRA pixel buffer, as drawn
+ (map only, no UIKit views over it). `nil` where the renderer cannot capture. For making videos
+ frame by frame: set the camera, wait for
+ ``MLNMapViewDelegate/mapViewDidFinishRenderingFrame:fullyRendered:`` with `fullyRendered`, then
+ capture.
+ */
+- (void)captureNextFrameWithHandler:(void (^)(CVPixelBufferRef _Nullable pixelBuffer))handler;
 
 /**
  The color far 3D terrain fades toward: distance haze that blends the far edge of the terrain

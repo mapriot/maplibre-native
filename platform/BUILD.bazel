@@ -112,6 +112,7 @@ objc_library(
         "CoreImage",
         "CoreGraphics",
         "CoreLocation",
+        "CoreVideo",
         "QuartzCore",
     ] + select({
         "//:metal_renderer": [

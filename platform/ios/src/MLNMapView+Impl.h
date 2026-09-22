@@ -4,6 +4,7 @@
 
 #import "MLNBackendResource.h"
 
+#import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/CALayer.h>
 #import <UIKit/UIImage.h>
 #import <UIKit/UIView.h>
@@ -47,6 +48,9 @@ public:
   // holder instead of the regular view. This allows us to drop the framebuffers associated with
   // the rendering context and reduce memory while in the background.
   virtual UIImage* snapshot() = 0;
+
+  // Hands the next rendered frame to `handler` as a BGRA pixel buffer (nil where unsupported).
+  virtual void captureNextFrame(void (^handler)(CVPixelBufferRef)) { handler(nil); }
 
   // Called when UIView's layout has changed.
   virtual void layoutChanged() {};

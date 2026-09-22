@@ -71,6 +71,49 @@ public:
 
   void swap() override {
     id<CAMetalDrawable> currentDrawable = [mtlView currentDrawable];
+    if (currentDrawable && captureHandler && commandBuffer &&
+        currentDrawable.texture.framebufferOnly) {
+      // Drawn before capture made the drawable readable: the handler waits for the next frame.
+    } else if (currentDrawable && captureHandler && commandBuffer) {
+      // Copy the finished frame out before it is presented; hand it over once the GPU is done.
+      id<MTLTexture> texture = currentDrawable.texture;
+      const NSUInteger width = texture.width, height = texture.height, bytesPerRow = width * 4;
+      id<MTLBuffer> buffer = [mtlView.device newBufferWithLength:bytesPerRow * height
+                                                         options:MTLResourceStorageModeShared];
+      id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
+      [blit copyFromTexture:texture
+                       sourceSlice:0
+                       sourceLevel:0
+                      sourceOrigin:MTLOriginMake(0, 0, 0)
+                        sourceSize:MTLSizeMake(width, height, 1)
+                          toBuffer:buffer
+                 destinationOffset:0
+            destinationBytesPerRow:bytesPerRow
+          destinationBytesPerImage:bytesPerRow * height];
+      [blit endEncoding];
+      void (^handler)(CVPixelBufferRef) = captureHandler;
+      captureHandler = nil;
+      [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer>) {
+        CVPixelBufferRef pixelBuffer = NULL;
+        NSDictionary* attributes = @{(id)kCVPixelBufferIOSurfacePropertiesKey : @{}};
+        CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
+                            (__bridge CFDictionaryRef)attributes, &pixelBuffer);
+        if (pixelBuffer) {
+          CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+          uint8_t* destination = (uint8_t*)CVPixelBufferGetBaseAddress(pixelBuffer);
+          const size_t destinationRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+          const uint8_t* source = (const uint8_t*)buffer.contents;
+          for (NSUInteger row = 0; row < height; row++) {
+            memcpy(destination + row * destinationRow, source + row * bytesPerRow, bytesPerRow);
+          }
+          CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+          handler(pixelBuffer);
+          if (pixelBuffer) CVPixelBufferRelease(pixelBuffer);
+        });
+      }];
+    }
     if (currentDrawable) {
       if (presentsWithTransaction) {
         [commandBuffer commit];
@@ -105,6 +148,7 @@ public:
   id<MTLCommandBuffer> commandBuffer;
   id<MTLCommandQueue> commandQueue;
   bool presentsWithTransaction = false;
+  void (^captureHandler)(CVPixelBufferRef) = nil;
 
   // Cached last-applied values comparing against MTKView's reflected state round-trips
   // through UIKit and can defeat the no-op guard under non-integer scale factors.
@@ -202,6 +246,13 @@ void MLNMapViewMetalImpl::deactivate() {
   if (--resource.activationCount) {
     return;
   }
+}
+
+void MLNMapViewMetalImpl::captureNextFrame(void (^handler)(CVPixelBufferRef)) {
+  auto& resource = getResource<MLNMapViewMetalRenderableResource>();
+  // The drawable must be readable to be copied from.
+  resource.mtlView.framebufferOnly = NO;
+  resource.captureHandler = handler;
 }
 
 UIImage* MLNMapViewMetalImpl::snapshot() {
