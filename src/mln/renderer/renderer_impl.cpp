@@ -901,17 +901,22 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
     // Add the feature info from the render orchestrator
     stats->frameRenderedFeatures = std::move(orchestrator.moveFrameRenderedFeatures());
 
+    // Fully rendered only when the terrain has caught up too: a frame whose drape targets or
+    // new tiles were deferred (the per-frame budget, or a drape texture that could not be
+    // allocated) shows those tiles without their content - the style's background colour - and
+    // an app waiting for a complete frame (a snapshot, a video frame) must not take it.
+    const bool terrainPending = drapeWorkDeferred || context.newTileBuildWasDeferred() || terrainCoverPending;
+    const bool complete = renderTreeParameters.loaded && !terrainPending;
     observer->onDidFinishRenderingFrame(
-        renderTreeParameters.loaded ? RendererObserver::RenderMode::Full : RendererObserver::RenderMode::Partial,
+        complete ? RendererObserver::RenderMode::Full : RendererObserver::RenderMode::Partial,
         // Request a follow-up frame if the drape budget deferred any target or the tile-build
         // budget deferred any new tile, so deferred drapes/tiles catch up progressively even
         // after the interaction stops.
-        renderTreeParameters.needsRepaint || drapeWorkDeferred || context.newTileBuildWasDeferred() ||
-            terrainCoverPending,
+        renderTreeParameters.needsRepaint || terrainPending,
         renderTreeParameters.placementChanged,
         std::move(stats));
 
-    if (!renderTreeParameters.loaded) {
+    if (!complete) {
         renderState = RenderState::Partial;
     } else if (renderState != RenderState::Fully) {
         renderState = RenderState::Fully;
