@@ -13,6 +13,7 @@
 #include <mln/util/geo.hpp>
 #include <mln/util/geometry.hpp>
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <map>
@@ -78,6 +79,19 @@ public:
     /// source, so it is a member (not static). Returns {} when there is none.
     std::set<UnwrappedTileID> computeMeshCover(const TransformState& state,
                                                const std::shared_ptr<UpdateParameters>& updateParameters) const;
+
+    /// Zoom levels the terrain mesh goes past the DEM source's maxzoom at most.
+    static constexpr uint8_t maxMeshOverzoomLevels = 3;
+
+    /// The deepest zoom of the terrain mesh over a DEM whose maxzoom is `demMaxZoom`: the load
+    /// mode's TerrainLoadBudget::meshTargetZoom, at most maxMeshOverzoomLevels past the DEM and
+    /// never shallower than it. A mesh tile past the DEM samples its DEM ancestor through a
+    /// sub-tile offset.
+    static constexpr uint8_t meshMaxZoom(TerrainLoadMode mode, uint8_t demMaxZoom) {
+        const int levels = std::clamp(
+            terrainLoadBudget(mode).meshTargetZoom - demMaxZoom, 0, static_cast<int>(maxMeshOverzoomLevels));
+        return static_cast<uint8_t>(demMaxZoom + levels);
+    }
 
     /// The point the mesh-tile cap measures distance from, in normalized web-mercator [0, 1]:
     /// the ground under the camera (the map centre when the map is not tilted).
@@ -199,9 +213,6 @@ public:
     /// the tile count shrinks by 4x per level, so this is a handful of tiles.
     static constexpr uint8_t demAncestorLevels = 8;
 
-    /// Zoom levels the terrain mesh (and its drape targets) may go past the DEM source's maxzoom,
-    /// sampling the DEM from an ancestor, so draped content stays sharp in close-ups.
-    static constexpr uint8_t terrainOverzoomLevels = 3;
 
     /**
      * @brief Per-tile elevation sampler for CPU-side symbol projection (line-placed labels):
