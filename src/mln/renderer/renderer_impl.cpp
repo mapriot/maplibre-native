@@ -238,6 +238,7 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
         updateParameters->tileLodMode,
         renderableSize,
         scissorRect,
+        updateParameters->captureRenderedFeatures,
     };
 
     parameters.symbolFadeChange = renderTreeParameters.symbolFadeChange;
@@ -807,6 +808,11 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
     // an app waiting for a complete frame (a snapshot, a video frame) must not take it.
     const bool terrainPending = drapeWorkDeferred || context.newTileBuildWasDeferred() || terrainCoverPending;
     const bool complete = renderTreeParameters.loaded && !terrainPending;
+    auto stats = std::make_shared<gfx::RenderingStats>(context.threadSafeCopyRenderingStats());
+
+    // Add the feature info from the render orchestrator
+    stats->frameRenderedFeatures = std::move(orchestrator.moveFrameRenderedFeatures());
+
     observer->onDidFinishRenderingFrame(
         complete ? RendererObserver::RenderMode::Full : RendererObserver::RenderMode::Partial,
         // Request a follow-up frame if the drape budget deferred any target or the tile-build
@@ -814,7 +820,7 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
         // after the interaction stops.
         renderTreeParameters.needsRepaint || terrainPending,
         renderTreeParameters.placementChanged,
-        context.threadSafeCopyRenderingStats());
+        std::move(stats));
 
     if (!complete) {
         renderState = RenderState::Partial;

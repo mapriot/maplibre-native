@@ -1,12 +1,12 @@
 #include <mln/renderer/layer_tweaker.hpp>
 
 #include <mln/map/transform_state.hpp>
-#include <mln/style/layer_properties.hpp>
 #include <mln/renderer/render_tree.hpp>
 #include <mln/renderer/render_tile.hpp>
 #include <mln/shaders/layer_ubo.hpp>
-#include <mln/util/mat4.hpp>
+#include <mln/style/layer_properties.hpp>
 #include <mln/util/containers.hpp>
+#include <mln/util/mat4.hpp>
 
 #include <cmath>
 
@@ -75,15 +75,44 @@ mat4 LayerTweaker::getTileMatrix(const UnwrappedTileID& tileID,
     if (renderingToTerrain) {
         *renderingToTerrain = false;
     }
+    return getTileMatrix(tileID,
+                         parameters.state,
+                         parameters.transformParams,
+                         parameters.currentLayer,
+                         translation,
+                         anchor,
+                         drawable.getOrigin(),
+                         drawable.getIs3D(),
+                         drawable.getEnableDepth(),
+                         drawable.getSubLayerIndex(),
+                         nearClipped,
+                         inViewportPixelUnits,
+                         aligned);
+}
+
+mat4 LayerTweaker::getTileMatrix(const UnwrappedTileID& tileID,
+                                 const TransformState& transformState,
+                                 const TransformParameters& transformParams,
+                                 const uint32_t currentLayerIndex,
+                                 const std::array<float, 2>& translation,
+                                 const style::TranslateAnchorType anchor,
+                                 const std::optional<mln::Point<double>>& origin,
+                                 bool is3d,
+                                 bool useDepth,
+                                 std::int32_t subLayerIndex,
+                                 bool nearClipped,
+                                 bool inViewportPixelUnits,
+                                 bool aligned) {
     // from RenderTile::prepare
     mat4 tileMatrix;
-    parameters.state.matrixFor(/*out*/ tileMatrix, tileID);
-    if (const auto& origin{drawable.getOrigin()}; origin.has_value()) {
+    transformState.matrixFor(/*out*/ tileMatrix, tileID);
+    if (origin.has_value()) {
         matrix::translate(tileMatrix, tileMatrix, origin->x, origin->y, 0);
     }
-    multiplyWithProjectionMatrix(/*in-out*/ tileMatrix, parameters, drawable, nearClipped, aligned);
+    multiplyWithProjectionMatrix(
+        /*in-out*/ tileMatrix, transformParams, currentLayerIndex, is3d, useDepth, subLayerIndex, nearClipped, aligned);
     return RenderTile::translateVtxMatrix(
-        tileID, tileMatrix, translation, anchor, parameters.state, inViewportPixelUnits);
+        tileID, tileMatrix, translation, anchor, transformState, inViewportPixelUnits);
 }
 
 uint64_t LayerTweaker::propertiesEpoch = 0;
@@ -99,10 +128,28 @@ void LayerTweaker::multiplyWithProjectionMatrix(/*in-out*/ mat4& matrix,
                                                 [[maybe_unused]] const gfx::Drawable& drawable,
                                                 bool nearClipped,
                                                 bool aligned) {
+    multiplyWithProjectionMatrix(matrix,
+                                 parameters.transformParams,
+                                 parameters.currentLayer,
+                                 drawable.getIs3D(),
+                                 drawable.getEnableDepth(),
+                                 drawable.getSubLayerIndex(),
+                                 nearClipped,
+                                 aligned);
+}
+
+void LayerTweaker::multiplyWithProjectionMatrix(/*in-out*/ mat4& matrix,
+                                                const TransformParameters& transformParams,
+                                                [[maybe_unused]] const uint32_t currentLayerIndex,
+                                                [[maybe_unused]] bool is3d,
+                                                [[maybe_unused]] bool useDepth,
+                                                [[maybe_unused]] std::int32_t subLayerIndex,
+                                                bool nearClipped,
+                                                bool aligned) {
     // nearClippedMatrix has near plane moved further, to enhance depth buffer precision
-    const auto& projMatrixRef = aligned ? parameters.transformParams.alignedProjMatrix
-                                        : (nearClipped ? parameters.transformParams.nearClippedProjMatrix
-                                                       : parameters.transformParams.projMatrix);
+    const auto& projMatrixRef = aligned ? transformParams.alignedProjMatrix
+                                        : (nearClipped ? transformParams.nearClippedProjMatrix
+                                                       : transformParams.projMatrix);
     // 2D drawables no longer carry a per-layer depth offset in their matrix: on the non-GL
     // backends they are not depth-tested (PaintParameters::depthModeForSublayer), and the offset
     // did not survive the float32 cast of a matrix with a large translation anyway.

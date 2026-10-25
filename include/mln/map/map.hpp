@@ -1,26 +1,27 @@
 #pragma once
 
-#include <mln/util/chrono.hpp>
+#include <mln/annotation/annotation.hpp>
 #include <mln/map/bound_options.hpp>
+#include <mln/map/camera.hpp>
 #include <mln/map/map_observer.hpp>
 #include <mln/map/map_options.hpp>
 #include <mln/map/mode.hpp>
-#include <mln/util/noncopyable.hpp>
-#include <mln/util/size.hpp>
-#include <mln/annotation/annotation.hpp>
-#include <mln/map/camera.hpp>
-#include <mln/util/geometry.hpp>
 #include <mln/map/projection_mode.hpp>
 #include <mln/storage/resource_options.hpp>
-#include <mln/util/client_options.hpp>
 #include <mln/util/action_journal_options.hpp>
+#include <mln/util/chrono.hpp>
+#include <mln/util/client_options.hpp>
+#include <mln/util/geometry.hpp>
+#include <mln/util/noncopyable.hpp>
+#include <mln/util/size.hpp>
 
+#include <cstddef>
 #include <cstdint>
-#include <string>
 #include <functional>
-#include <vector>
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace mln {
 
@@ -121,16 +122,18 @@ public:
     /// (exaggerated) terrain height at that location - see `Renderer::queryTerrainElevation` -
     /// so annotations and markers land on the draped surface rather than at sea level.
     ScreenCoordinate pixelForLatLng(const LatLng&, double elevationMeters) const;
-    LatLng latLngForPixel(const ScreenCoordinate&) const;
+    LatLng latLngForPixel(const ScreenCoordinate&, LatLng::WrapMode = LatLng::Wrapped) const;
     /// Geographic position of the point where the screen pixel's view ray crosses the plane
     /// `elevationMeters` above sea level (exaggerated terrain units, as pixelForLatLng). A
     /// terrain-aware pick marches this along the ray - see MLNMapView convertPoint:toLatLngFromView:.
     LatLng latLngForPixel(const ScreenCoordinate&, double elevationMeters) const;
     std::vector<ScreenCoordinate> pixelsForLatLngs(const std::vector<LatLng>&) const;
-    std::vector<LatLng> latLngsForPixels(const std::vector<ScreenCoordinate>&) const;
+    std::vector<LatLng> latLngsForPixels(const std::vector<ScreenCoordinate>&,
+                                         LatLng::WrapMode = LatLng::Wrapped) const;
 
     // Transform
-    TransformState getTransfromState() const;
+    TransformState getTransformState() const;
+    [[deprecated("Use getTransformState()")]] TransformState getTransfromState() const;
 
     // Annotations
     void addAnnotationImage(std::unique_ptr<style::Image>);
@@ -261,6 +264,17 @@ public:
     /// centerAltitude.
     void anchorCenterOnTerrain();
 
+    /// Moves the camera's centre along the line of sight to `altitudeMeters` above sea level
+    /// (exaggeration applied, as the terrain is drawn) without moving the camera: the centre and
+    /// zoom change, nothing on screen does. anchorCenterOnTerrain() is this at the ground height;
+    /// 0 puts the centre back at sea level. A centre and zoom describe the same view only at the
+    /// same centre altitude (CameraOptions::centerAltitude); in core, jumpTo with a camera that
+    /// includes its centerAltitude restores it in one step. Returns false, changing nothing, when
+    /// the centre is already at that altitude, when the line of sight nearly grazes the plane at
+    /// that altitude (a pitch over ~84 degrees) or meets it (nearly) at the camera, or when the
+    /// zoom limits, the bounds or the constrain mode would cut the move short.
+    bool setCenterAltitudeKeepingView(double altitudeMeters);
+
     /// Debug: when enabled, RenderTerrain logs the camera eye's clearance over the terrain
     /// ("ABOVE-GROUND ...") each frame it is near/below the surface. Off by default; the
     /// per-frame elevation sampling is skipped entirely when off, so it has no cost otherwise.
@@ -270,6 +284,32 @@ public:
     ClientOptions getClientOptions() const;
 
     const std::unique_ptr<util::ActionJournal>& getActionJournal();
+
+    // If captureRenderedFeatures is true, these methods allow
+    // access to the results of the most recently completed frame.
+
+    using FeatureInfo = gfx::RenderingStats::FeatureInfo;
+    using FrameRenderedFeaturesMap = gfx::RenderingStats::FrameRenderedFeaturesMap;
+    const FrameRenderedFeaturesMap& getRenderedFeatures() const;
+
+    /// Call the provided function for each matching feature rendered in the last frame
+    void getRenderedFeatures(const std::optional<std::string>& featureId,
+                             const std::optional<std::string>& layerId,
+                             const std::optional<std::string>& sourceId,
+                             const std::function<bool(const std::string&, const FeatureInfo&)>&) const;
+
+    /// Returns the number of matching features rendered in the last frame.
+    std::size_t getRenderedFeatureCount(const std::optional<std::string>& featureId = std::nullopt,
+                                        const std::optional<std::string>& layerId = std::nullopt,
+                                        const std::optional<std::string>& sourceId = std::nullopt,
+                                        std::size_t limit = std::numeric_limits<std::size_t>::max()) const;
+
+    /// Returns true if any matching feature was rendered in the last frame
+    bool isFeatureRendered(const std::optional<std::string>& featureId = std::nullopt,
+                           const std::optional<std::string>& layerId = std::nullopt,
+                           const std::optional<std::string>& sourceId = std::nullopt) const {
+        return 0 < getRenderedFeatureCount(featureId, layerId, sourceId, 1);
+    }
 
 protected:
     class Impl;

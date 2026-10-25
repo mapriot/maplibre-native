@@ -63,8 +63,8 @@ public:
                             const std::optional<std::string>& sourceLayerID,
                             const std::optional<std::string>& featureID,
                             const std::optional<std::string>& stateKey) const;
-    AnnotationIDs queryPointAnnotations(const ScreenBox& box, const std::chrono::milliseconds& timeout) const;
-    AnnotationIDs queryShapeAnnotations(const ScreenBox& box, const std::chrono::milliseconds& timeout) const;
+    AnnotationIDs queryPointAnnotations(const ScreenBox& box) const;
+    AnnotationIDs queryShapeAnnotations(const ScreenBox& box) const;
 
     // 3D terrain (bounded render-thread round trips; nullopt without terrain or on timeout)
     std::optional<double> queryTerrainElevation(const mln::LatLng&, const std::chrono::milliseconds& timeout) const;

@@ -276,6 +276,10 @@ public:
                             const jni::String& featureId,
                             const jni::String& stateKey);
 
+    void setGlobalStateProperty(JNIEnv&, const jni::String& name, const jni::Object<gson::JsonElement>& value);
+
+    jni::Local<jni::Object<gson::JsonObject>> getGlobalState(JNIEnv&);
+
     jni::Local<jni::Object<Light>> getLight(JNIEnv&);
 
     void setTerrain(JNIEnv&, const jni::String& sourceId, jni::jfloat exaggeration);
@@ -340,6 +344,12 @@ public:
 
     jni::jint getTerrainLoadMode(JNIEnv&);
 
+    void anchorCenterOnTerrain(JNIEnv&);
+
+    jni::jboolean setCenterAltitudeKeepingView(JNIEnv&, jni::jdouble);
+
+    jni::jdouble getCenterAltitude(JNIEnv&);
+
     void setTerrainSkirtLength(JNIEnv&, jni::jint);
 
     jni::jint getTerrainSkirtLength(JNIEnv&);
@@ -391,6 +401,11 @@ public:
 
     void onSymbolError(const std::string&) override;
 
+    int getRenderedFeatureCount(JNIEnv&,
+                                const jni::String& featureId,
+                                const jni::String& layerId,
+                                const jni::String& sourceId);
+
 private:
     std::shared_ptr<AndroidRendererFrontend> rendererFrontend;
 
@@ -409,7 +424,6 @@ private:
     int width = 64;
     int height = 64;
 
-    static constexpr auto annotationRequestTimeout = std::chrono::milliseconds(200);
     // Terrain-aware projection round trips (pixelForLatLng / latLngForPixel on 3D terrain)
     static constexpr auto terrainQueryTimeout = std::chrono::milliseconds(200);
 

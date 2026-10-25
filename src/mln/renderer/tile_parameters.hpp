@@ -2,6 +2,7 @@
 
 #include <mln/map/mode.hpp>
 #include <mln/actor/scheduler.hpp>
+#include <mln/util/feature.hpp>
 
 #include <memory>
 #include <numbers>
@@ -43,10 +44,12 @@ public:
     double tileLodZoomShift = 0;
     TileLodMode tileLodMode = TileLodMode::Default;
     gfx::DynamicTextureAtlasPtr dynamicTextureAtlas;
-    bool isUpdateSynchronous = false;
+    std::shared_ptr<const GlobalStateMap> globalState = nullptr;
     /// Terrain elevation for the tile cover; null when there is no terrain, which
     /// leaves the cover flat. See util::TileElevationProvider.
     const util::TileElevationProvider* elevationProvider = nullptr;
+    bool isUpdateSynchronous = false;
+    bool captureRenderedFeatures = false;
     /// Keep this many zoom levels of ancestors of the ideal cover loaded (Required, never
     /// rendered). Used for the 3D-terrain DEM source so layers drawn from shallower tiles
     /// (overzoomed low-maxzoom sources, far-field distance LOD) still find a DEM tile that
