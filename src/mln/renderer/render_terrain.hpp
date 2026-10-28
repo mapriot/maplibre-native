@@ -219,6 +219,8 @@ public:
      * @return height in metres of the rendered surface, or 0 when no DEM covers it
      */
     double getElevationForLatLng(const LatLng& latLng) const;
+    /// As getElevationForLatLng, but empty where no loaded DEM tile covers the point (rather than 0).
+    std::optional<double> findElevationForLatLng(const LatLng& latLng) const;
 
     /**
      * @brief Exaggerated terrain height (metres) at a geographic coordinate, sampled from the
