@@ -309,10 +309,15 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
     // to the horizon: thousands of tiles at a steep pitch, each kept with its geometry for as
     // long as the view holds. The terrain mesh is capped to the tiles nearest the camera
     // (RenderTerrain::computeMeshCover), so keep the nearest few per mesh tile, measured from
-    // the same point. The DEM source keeps its own cover.
-    const size_t coverTileLimit = terrainEnabled ? terrainLoadBudget(updateParameters->terrainLoadMode).maxMeshTiles *
-                                                       RenderTerrain::sourceTilesPerMeshTile
-                                                 : 0;
+    // the same point. The DEM source keeps its own cover. The cap grows with the viewport
+    // (terrainMeshTileCap), and so does this limit: on a tablet the mesh reaches farther than a
+    // phone's cap would, and its far tiles need their source tiles.
+    const Size viewport = updateParameters->transformState.getSize();
+    const size_t coverTileLimit =
+        terrainEnabled ? terrainMeshTileCap(updateParameters->terrainLoadMode,
+                                            static_cast<double>(viewport.width) * static_cast<double>(viewport.height)) *
+                             RenderTerrain::sourceTilesPerMeshTile
+                       : 0;
     tileParameters.coverTileLimitOrigin = RenderTerrain::meshTileCapOrigin(updateParameters->transformState);
 
     const ImageDifference imageDiff = diffImages(imageImpls, updateParameters->images);

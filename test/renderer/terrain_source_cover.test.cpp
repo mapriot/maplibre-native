@@ -104,7 +104,9 @@ public:
         int demMinZoom = 0;
         int demMaxZoom = 6;
         TerrainLoadMode mode = TerrainLoadMode::Quality;
-        double pitch = 70.0;
+        // A degree short of where the cover runs to the horizon (72), so even a tablet's view,
+        // whose source limit grows with the mesh-tile cap, covers more than the limit allows.
+        double pitch = 71.0;
         double zoom = 13.0;
         Size size{1200, 800};
     };
@@ -158,8 +160,12 @@ public:
 
     void showParcels() { map.getStyle().getLayer("parcels")->setVisibility(style::VisibilityType::Visible); }
 
+    // The mesh-tile cap grows with the viewport, and the source limit with it.
     size_t sourceTileLimit() const {
-        return terrainLoadBudget(map.getTerrainLoadMode()).maxMeshTiles * RenderTerrain::sourceTilesPerMeshTile;
+        const Size size = frontend.getSize();
+        return terrainMeshTileCap(map.getTerrainLoadMode(),
+                                  static_cast<double>(size.width) * static_cast<double>(size.height)) *
+               RenderTerrain::sourceTilesPerMeshTile;
     }
 
     // Where the camera stands on the ground, from the free-camera API, worked out independently of
@@ -245,7 +251,7 @@ TEST(TerrainSourceCover, ASourceRequestsOnlyTheTilesNearestTheCamera) {
 }
 
 TEST(TerrainSourceCover, TheCapFollowsTheTerrainLoadMode) {
-    expectOnlyTheTilesNearestTheCamera({.mode = TerrainLoadMode::Performance});
+    expectOnlyTheTilesNearestTheCamera({.mode = TerrainLoadMode::Performance, .size = {1600, 1600}});
 }
 
 // The terrain draws from its DEM source, so the DEM keeps its own cover rather than the cap.
