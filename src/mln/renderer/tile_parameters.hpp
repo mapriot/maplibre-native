@@ -4,6 +4,7 @@
 #include <mln/actor/scheduler.hpp>
 #include <mln/util/feature.hpp>
 
+#include <array>
 #include <memory>
 #include <numbers>
 
@@ -55,6 +56,14 @@ public:
     /// (overzoomed low-maxzoom sources, far-field distance LOD) still find a DEM tile that
     /// covers them; without it those symbols and circles fall back to sea level.
     uint8_t retainAncestorLevels = 0;
+    /// With terrain on: the most tiles one source covers (ideal and prefetch covers each),
+    /// keeping those nearest `coverTileLimitOrigin`. A source whose minzoom is deeper than the
+    /// far field needs is covered at that minzoom to the horizon, thousands of tiles at a steep
+    /// pitch however few the mesh draws there. 0 = no limit.
+    size_t coverTileLimit = 0;
+    /// Where coverTileLimit measures from (normalized web-mercator): the ground under the
+    /// camera, RenderTerrain::meshTileCapOrigin, the same point the mesh-tile cap uses.
+    std::array<double, 2> coverTileLimitOrigin{{0.0, 0.0}};
 };
 
 } // namespace mln

@@ -78,7 +78,7 @@ std::set<std::string> diffGlobalStateKeys(const GlobalStateMap& previous, const 
         }
     }
     for (const auto& entry : previous) {
-        if (current.find(entry.first) == current.end()) {
+        if (!current.contains(entry.first)) {
             keys.insert(entry.first);
         }
     }
@@ -305,6 +305,16 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
     TileParameters demTileParameters = tileParameters;
     demTileParameters.retainAncestorLevels = terrainEnabled ? RenderTerrain::demAncestorLevels : 0;
 
+    // A source whose minzoom is deeper than the far field's zoom is covered at that minzoom out
+    // to the horizon: thousands of tiles at a steep pitch, each kept with its geometry for as
+    // long as the view holds. The terrain mesh is capped to the tiles nearest the camera
+    // (RenderTerrain::computeMeshCover), so keep the nearest few per mesh tile, measured from
+    // the same point. The DEM source keeps its own cover.
+    const size_t coverTileLimit = terrainEnabled ? terrainLoadBudget(updateParameters->terrainLoadMode).maxMeshTiles *
+                                                       RenderTerrain::sourceTilesPerMeshTile
+                                                 : 0;
+    tileParameters.coverTileLimitOrigin = RenderTerrain::meshTileCapOrigin(updateParameters->transformState);
+
     const ImageDifference imageDiff = diffImages(imageImpls, updateParameters->images);
     imageImpls = updateParameters->images;
 
@@ -527,17 +537,19 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
             }
         }
         // Mark DEM source as needed for terrain rendering
-        if (renderTerrain && renderTerrain->isEnabled() && sourceImpl->id == renderTerrain->getSourceID()) {
+        const bool isDemSource = renderTerrain && renderTerrain->isEnabled() &&
+                                 sourceImpl->id == renderTerrain->getSourceID();
+        if (isDemSource) {
             sourceNeedsRendering = true;
         }
+        tileParameters.coverTileLimit = isDemSource ? 0 : coverTileLimit;
 
         tileParameters.isUpdateSynchronous = sourceImpl->isUpdateSynchronous();
-        const bool isDEMSource = terrainEnabled && sourceImpl->id == renderTerrain->getSourceID();
         source->update(sourceImpl,
                        filteredLayersForSource,
                        sourceNeedsRendering,
                        sourceNeedsRelayout,
-                       isDEMSource ? demTileParameters : tileParameters);
+                       isDemSource ? demTileParameters : tileParameters);
         filteredLayersForSource.clear();
 
         // Update all layers with their new renderability status, if it changed.

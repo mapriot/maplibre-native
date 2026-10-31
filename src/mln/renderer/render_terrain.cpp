@@ -58,6 +58,7 @@
 #include <functional>
 #include <iomanip>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace mln {
@@ -160,7 +161,8 @@ std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
     // ancestor through a sub-tile offset (the ancestor fallback in update()), and its 1024 px
     // drape target covers a smaller area. Capped at the DEM's maxzoom, a close-up at z16 over a
     // z12 DEM stretched each target 8x (dotted roads, blocky imagery). How deep depends on the
-    // load mode (meshMaxZoom): each level deeper adds tiles, and drape memory with them.
+    // load mode (meshMaxZoom): Quality follows the view as gl-js does; Balanced and Performance
+    // stop sooner, since each level deeper adds tiles, and drape memory with them.
     const TerrainLoadMode loadMode = updateParameters ? updateParameters->terrainLoadMode : TerrainLoadMode::Quality;
     const Range<uint8_t> zoomRange{0, meshMaxZoom(loadMode, demSource->getMaxZoom())};
 
@@ -291,44 +293,81 @@ std::set<UnwrappedTileID> RenderTerrain::coarsenFarMeshTiles(std::set<UnwrappedT
                                                              size_t maxTiles,
                                                              uint8_t minZoom,
                                                              const std::array<double, 2>& origin) {
-    if (maxTiles == 0) {
+    if (maxTiles == 0 || tiles.size() <= maxTiles) {
         return tiles;
     }
-    while (tiles.size() > maxTiles) {
-        // A parent can take its children's place when they are leaves: no tile inside it goes
-        // deeper than its children, so the merge never swallows finer tiles nearer the camera
-        // and drops at most three tiles. Parents of tiles at minZoom are not candidates.
-        std::set<UnwrappedTileID> parents;
-        std::set<UnwrappedTileID> withDeeperTiles;
-        for (const auto& id : tiles) {
-            if (id.canonical.z <= minZoom) {
-                continue;
-            }
-            parents.emplace(id.wrap, id.canonical.scaledTo(id.canonical.z - 1));
-            for (int z = id.canonical.z - 2; z >= minZoom; --z) {
-                withDeeperTiles.emplace(id.wrap, id.canonical.scaledTo(static_cast<uint8_t>(z)));
+
+    // A parent can take its children's place when they are leaves: no tile inside it goes deeper
+    // than its children, so the merge never swallows finer tiles nearer the camera and drops at
+    // most three tiles. Parents of tiles at minZoom are not candidates. Each parent counts the
+    // tiles directly inside it and those deeper, kept up to date as tiles merge, so a round
+    // costs the depth of the tiles it touches, not the size of the cover.
+    struct Count {
+        int children = 0;
+        int deeper = 0;
+        bool queued = false;
+    };
+    std::unordered_map<UnwrappedTileID, Count> counts;
+
+    // The parents ready to merge, farthest first. Ties go by tile ID, as in nearestMeshTiles.
+    struct Candidate {
+        double dist2;
+        UnwrappedTileID id;
+        bool operator<(const Candidate& other) const {
+            return dist2 > other.dist2 || (dist2 == other.dist2 && id < other.id);
+        }
+    };
+    std::set<Candidate> ready;
+
+    const auto refresh = [&](const UnwrappedTileID& id, Count& count) {
+        const bool isReady = count.children > 0 && count.deeper == 0;
+        if (isReady == count.queued) {
+            return;
+        }
+        const Candidate candidate{tileCentreDistance2(id, origin), id};
+        if (isReady) {
+            ready.insert(candidate);
+        } else {
+            ready.erase(candidate);
+        }
+        count.queued = isReady;
+    };
+
+    // Adds (+1) or removes (-1) a tile in the counts of the parents it lies in; with `update`,
+    // also refreshes them.
+    const auto account = [&](const UnwrappedTileID& tile, int change, bool update) {
+        if (tile.canonical.z <= minZoom) {
+            return;
+        }
+        for (int z = tile.canonical.z - 1; z >= minZoom; --z) {
+            const UnwrappedTileID parent(tile.wrap, tile.canonical.scaledTo(static_cast<uint8_t>(z)));
+            Count& count = counts[parent];
+            (z == tile.canonical.z - 1 ? count.children : count.deeper) += change;
+            if (update) {
+                refresh(parent, count);
             }
         }
-        // The farthest such parent goes first. Ties go by tile ID, as in nearestMeshTiles.
-        std::optional<UnwrappedTileID> farthest;
-        double farthestDist2 = 0;
-        for (const auto& parent : parents) {
-            if (withDeeperTiles.contains(parent)) {
-                continue;
-            }
-            const double dist2 = tileCentreDistance2(parent, origin);
-            if (!farthest || dist2 > farthestDist2 || (dist2 == farthestDist2 && parent < *farthest)) {
-                farthest = parent;
-                farthestDist2 = dist2;
+    };
+
+    for (const auto& id : tiles) {
+        account(id, 1, false);
+    }
+    for (auto& [id, count] : counts) {
+        refresh(id, count);
+    }
+
+    // Each round takes tiles away or makes one shallower, so the loop ends by minZoom at the
+    // latest.
+    while (tiles.size() > maxTiles && !ready.empty()) {
+        const UnwrappedTileID farthest = ready.begin()->id;
+        for (const auto& child : farthest.children()) {
+            if (tiles.erase(child) > 0) {
+                account(child, -1, true);
             }
         }
-        if (!farthest) {
-            break;
+        if (tiles.insert(farthest).second) {
+            account(farthest, 1, true);
         }
-        // Each round takes tiles away or makes one shallower, so the loop ends by minZoom at the
-        // latest.
-        std::erase_if(tiles, [&](const UnwrappedTileID& id) { return id.isChildOf(*farthest); });
-        tiles.insert(*farthest);
     }
     return tiles;
 }
@@ -1033,6 +1072,7 @@ void RenderTerrain::renderDepth(RenderOrchestrator& orchestrator,
     // bindTextures), so no manual bind here.
 #endif
     depthRenderTarget->render(orchestrator, renderTree, parameters);
+    parameters.context.renderingStats().numDepthPasses++;
     lastDepthProjMatrix = proj;
     depthDirty = false;
 }
@@ -1050,12 +1090,15 @@ void RenderTerrain::prepareDepthTarget(PaintParameters& parameters) {
         // render target here would hand the symbol tweaker a broken texture
         return;
     }
+    bool fresh = false;
     if (!depthRenderTarget || !depthRenderTarget->getTexture() || depthRenderTarget->getTexture()->getSize() != size) {
         depthRenderTarget = parameters.context.createRenderTarget(
             size, gfx::TextureChannelDataType::UnsignedByte, /*stencil=*/false);
+        depthLayerGroupAttached = nullptr;
         if (!depthRenderTarget) {
             return;
         }
+        fresh = true;
         // Far plane everywhere the terrain does not cover (unpack_depth(1,1,1,1) ~ 1.0)
         depthRenderTarget->setClearColor(Color::white());
         // The packed digits must not be filtered: blending neighbouring texels'
@@ -1064,10 +1107,12 @@ void RenderTerrain::prepareDepthTarget(PaintParameters& parameters) {
                                                                   .wrapU = gfx::TextureWrapType::Clamp,
                                                                   .wrapV = gfx::TextureWrapType::Clamp});
     }
-    // (Re)attach the depth layer group; it may not have existed yet when the
-    // target was first created on an early frame
-    if (depthLayerGroup) {
+    // Attach the depth layer group once per target; it may not have existed yet when the
+    // target was first created on an early frame. Attaching on every call marked the pass
+    // dirty on every frame, so the skip in renderDepth never fired.
+    if (depthLayerGroup && (fresh || depthLayerGroupAttached != depthLayerGroup.get())) {
         depthRenderTarget->addLayerGroup(depthLayerGroup, /*replace=*/true);
+        depthLayerGroupAttached = depthLayerGroup.get();
         depthDirty = true; // fresh target must be drawn
     }
 }
@@ -1172,7 +1217,7 @@ void RenderTerrain::generateMesh(gfx::Context& /*context*/) {
         for (size_t x = 0; x < vps; ++x) {
             addVert(x * step, extent, 1);
         }
-        for (uint16_t x = 0; x < gridSize; ++x) {
+        for (size_t x = 0; x < gridSize; ++x) {
             indices.insert(indices.end(),
                            {static_cast<uint16_t>(offsetBottomEdge + x),
                             static_cast<uint16_t>(offsetBottom + x),
@@ -1198,7 +1243,7 @@ void RenderTerrain::generateMesh(gfx::Context& /*context*/) {
                 }
             }
         }
-        for (uint16_t y = 0; y < gridSize * 2; y += 2) {
+        for (size_t y = 0; y < gridSize * 2; y += 2) {
             indices.insert(indices.end(),
                            {static_cast<uint16_t>(offsetLeft + y),
                             static_cast<uint16_t>(offsetLeft + y + 1),

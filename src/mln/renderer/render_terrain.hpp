@@ -80,16 +80,20 @@ public:
     std::set<UnwrappedTileID> computeMeshCover(const TransformState& state,
                                                const std::shared_ptr<UpdateParameters>& updateParameters) const;
 
-    /// Zoom levels the terrain mesh goes past the DEM source's maxzoom at most.
+    /// Zoom levels the terrain mesh goes past the DEM source's maxzoom at most, in the modes whose
+    /// TerrainLoadBudget::meshTargetZoom stops short of util::DEFAULT_MAX_ZOOM.
     static constexpr uint8_t maxMeshOverzoomLevels = 3;
 
     /// The deepest zoom of the terrain mesh over a DEM whose maxzoom is `demMaxZoom`: the load
-    /// mode's TerrainLoadBudget::meshTargetZoom, at most maxMeshOverzoomLevels past the DEM and
-    /// never shallower than it. A mesh tile past the DEM samples its DEM ancestor through a
-    /// sub-tile offset.
+    /// mode's TerrainLoadBudget::meshTargetZoom, never shallower than the DEM. A target of
+    /// util::DEFAULT_MAX_ZOOM (Quality) follows the view, as maplibre-gl-js's TerrainSourceCache
+    /// does (to z22, clamping only the DEM lookup); a lower one goes at most
+    /// maxMeshOverzoomLevels past the DEM. A mesh tile past the DEM samples its DEM ancestor
+    /// through a sub-tile offset.
     static constexpr uint8_t meshMaxZoom(TerrainLoadMode mode, uint8_t demMaxZoom) {
-        const int levels = std::clamp(
-            terrainLoadBudget(mode).meshTargetZoom - demMaxZoom, 0, static_cast<int>(maxMeshOverzoomLevels));
+        const uint8_t target = terrainLoadBudget(mode).meshTargetZoom;
+        const int maxLevels = target >= util::DEFAULT_MAX_ZOOM ? target : static_cast<int>(maxMeshOverzoomLevels);
+        const int levels = std::clamp(target - demMaxZoom, 0, maxLevels);
         return static_cast<uint8_t>(demMaxZoom + levels);
     }
 
@@ -122,6 +126,9 @@ public:
                                                          size_t maxTiles,
                                                          uint8_t minZoom,
                                                          const std::array<double, 2>& origin);
+
+    /// Tiles a source may cover per tile of the mesh-tile cap (TileParameters::coverTileLimit).
+    static constexpr size_t sourceTilesPerMeshTile = 4;
 
     /// Resolve the DEM render source from the orchestrator if not yet bound.
     /// Renderer::Impl::render calls this before building the frame's drape-target
@@ -406,6 +413,9 @@ private:
     // or removed; lastDepthProjMatrix detects camera movement.
     bool depthDirty = true;
     std::optional<mat4> lastDepthProjMatrix;
+    // The group the depth target currently holds; re-attached (and the pass re-run) only when
+    // the target or the group is new, not on every frame
+    const LayerGroupBase* depthLayerGroupAttached = nullptr;
     // See getDepthTexture
     std::shared_ptr<gfx::Texture2D> placeholderDepthTexture;
 
