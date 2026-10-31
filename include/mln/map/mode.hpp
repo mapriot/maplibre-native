@@ -104,19 +104,6 @@ constexpr TerrainLoadBudget terrainLoadBudget(TerrainLoadMode mode) {
     }
 }
 
-/// The terrain mesh-tile cap for a viewport of `viewportArea` square points. The caps in
-/// TerrainLoadBudget are sized for a phone screen (~390 x 844 pt); a bigger view (a tablet)
-/// needs proportionally more tiles to draw terrain as far away, or its horizon goes flat.
-/// Scaled by the area, from 1x to at most 4x; no cap (0) stays no cap.
-constexpr size_t terrainMeshTileCap(TerrainLoadMode mode, double viewportArea) {
-    const size_t cap = terrainLoadBudget(mode).maxMeshTiles;
-    constexpr double phoneArea = 390.0 * 844.0;
-    const double factor = viewportArea <= phoneArea       ? 1.0
-                          : viewportArea >= 4 * phoneArea ? 4.0
-                                                          : viewportArea / phoneArea;
-    return static_cast<size_t>(static_cast<double>(cap) * factor);
-}
-
 /// Controls the vertical skirts extruded from every terrain tile edge. They hide the
 /// hairline gaps (stitches) between neighbouring tiles at different zoom levels, but show
 /// as vertical artifacts where the map has a transparent background - so which one you

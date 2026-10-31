@@ -685,17 +685,6 @@ TEST(TerrainDrape, MasksAreDrawnOnlyForTilesOverlappingTheTarget) {
         << counts.drawn << " masks over " << counts.targets << " targets, " << counts.skipped << " skipped";
 }
 
-TEST(TerrainLoadBudget, MeshTileCapGrowsWithTheViewport) {
-    const auto balanced = terrainLoadBudget(TerrainLoadMode::Balanced).maxMeshTiles;
-    // A phone, or anything smaller: the budget as it is.
-    EXPECT_EQ(balanced, terrainMeshTileCap(TerrainLoadMode::Balanced, 390.0 * 844.0));
-    EXPECT_EQ(balanced, terrainMeshTileCap(TerrainLoadMode::Balanced, 320.0 * 568.0));
-    // Twice the area, twice the tiles; a 13" tablet (1032 x 1376 pt) is capped at 4x.
-    EXPECT_EQ(balanced * 2, terrainMeshTileCap(TerrainLoadMode::Balanced, 2 * 390.0 * 844.0));
-    EXPECT_EQ(balanced * 4, terrainMeshTileCap(TerrainLoadMode::Balanced, 1032.0 * 1376.0));
-    EXPECT_EQ(balanced * 4, terrainMeshTileCap(TerrainLoadMode::Balanced, 4000.0 * 4000.0));
-}
-
 // Flat terrain at sea level seen straight down covers the map exactly, so the draped frame must
 // match the frame without terrain, colour for colour. On WebGPU the terrain surface drew nothing
 // (its layer group never set the 3D depth and stencil state), and the drape texture was sampled

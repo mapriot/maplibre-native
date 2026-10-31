@@ -225,9 +225,7 @@ std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
     // Never shallower than the DEM, which the per-tile lookup needs (see above), so the cover is
     // never coarser than it would be without the deeper mesh.
     if (updateParameters) {
-        const size_t maxTiles = terrainMeshTileCap(updateParameters->terrainLoadMode,
-                                                   static_cast<double>(state.getSize().width) *
-                                                       static_cast<double>(state.getSize().height));
+        const size_t maxTiles = terrainLoadBudget(updateParameters->terrainLoadMode).maxMeshTiles;
         const auto origin = meshTileCapOrigin(state);
         out = coarsenFarMeshTiles(std::move(out), maxTiles, demSource->getMaxZoom(), origin);
         out = nearestMeshTiles(std::move(out), maxTiles, origin);
