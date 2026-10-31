@@ -317,6 +317,10 @@ void Map::Impl::onDidFinishRenderingFrame(RenderMode renderMode,
     } else if (stillImageRequest && rendererFullyLoaded) {
         const auto request = std::move(stillImageRequest);
         request->callback(nullptr);
+    } else if (stillImageRequest && needsRepaint) {
+        // With every tile loaded, nothing else asks for another frame: terrain work the load
+        // mode's budget deferred (new tiles, drapes) would leave the still image waiting.
+        onUpdate();
     }
 
     lastFrameStats = std::move(stats);
