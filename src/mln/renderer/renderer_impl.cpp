@@ -263,24 +263,6 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
         // built), leaving the first frame with an empty cover and no terrain -
         // permanent blankness in single-frame still renders (the render tests).
         terrain->prepareSource(orchestrator);
-        // A new style (or layers or sources added or removed) invalidates every baked drape
-        // target: drop them so they are rendered afresh from what the map now shows. Checked only
-        // when the layer list object changes, and compared by ids, so paint changes (which the
-        // drape signature already covers) do not rebake the whole cover.
-        if (updateParameters->layers.get() != drapeLayersSeen) {
-            drapeLayersSeen = updateParameters->layers.get();
-            std::size_t fingerprint = 0;
-            const auto mix = [&](const std::string& id) {
-                fingerprint ^= std::hash<std::string>{}(id) + 0x9e3779b97f4a7c15ULL + (fingerprint << 6) +
-                               (fingerprint >> 2);
-            };
-            for (const auto& layer : *updateParameters->layers) mix(layer->id);
-            for (const auto& source : *updateParameters->sources) mix(source->id);
-            if (fingerprint != drapeStyleFingerprint) {
-                drapeStyleFingerprint = fingerprint;
-                texturePool.removeStaleRenderTargets({});
-            }
-        }
         const std::set<UnwrappedTileID> demTileIDs = terrain->computeMeshCover(state, updateParameters);
         // Full-size drape textures only for the finest tiles of the cover - the ones nearest the
         // camera, where the ground is magnified most; the coarser tiles further out get a quarter

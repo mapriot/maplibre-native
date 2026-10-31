@@ -68,11 +68,6 @@ private:
     static constexpr uint32_t drapeTileSize = 512;
     static constexpr uint32_t drapeQualityFactor = 2;
     TexturePool texturePool{drapeTileSize * drapeQualityFactor};
-    /// The layer list the drape targets were baked from, and a fingerprint of its layer and
-    /// source ids: a different style (a whole setStyleURL, say) must not keep showing the
-    /// previous one's content, which the per-target drape signature does not notice.
-    const void* drapeLayersSeen = nullptr;
-    std::size_t drapeStyleFingerprint = 0;
     /// This frame's layer revisions (see PaintParameters::drapeLayerRevisions).
     std::unordered_map<std::string, std::uintptr_t> layerIdentities;
 
