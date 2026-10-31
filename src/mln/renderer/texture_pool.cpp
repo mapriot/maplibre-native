@@ -6,7 +6,7 @@ namespace mln {
 TexturePool::TexturePool(uint32_t tilesize)
     : tileSize(tilesize) {}
 
-TexturePool::~TexturePool() {}
+TexturePool::~TexturePool() = default;
 
 void TexturePool::createRenderTarget(gfx::Context& context,
                                      const UnwrappedTileID& id,
