@@ -185,7 +185,7 @@ gfx::DepthMode PaintParameters::depthModeForSublayer([[maybe_unused]] uint8_t n,
         return gfx::DepthMode::disabled();
     }
     float depth = depthRangeSize + ((1 + currentLayer) * numSublayers + n) * depthEpsilon;
-    return gfx::DepthMode{gfx::DepthFunctionType::LessEqual, mask, {depth, depth}};
+    return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual, .mask = mask, .range = {depth, depth}};
 #else
     // 2D drawables are ordered by the render passes (painter's order), and depth-testing them
     // against each other is not reliable on these backends: the per-layer NDC z offset used to
@@ -202,7 +202,9 @@ gfx::DepthMode PaintParameters::depthModeForSublayer([[maybe_unused]] uint8_t n,
 
 gfx::DepthMode PaintParameters::depthModeFor3D() const {
 #if MLN_RENDER_BACKEND_OPENGL
-    return gfx::DepthMode{gfx::DepthFunctionType::LessEqual, gfx::DepthMaskType::ReadWrite, {0.0, depthRangeSize}};
+    return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual,
+                          .mask = gfx::DepthMaskType::ReadWrite,
+                          .range = {0.0, depthRangeSize}};
 #else
     return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual, .mask = gfx::DepthMaskType::ReadWrite};
 #endif
@@ -385,7 +387,7 @@ bool PaintParameters::renderTileClippingMasks(const RenderTiles& sourceTiles) {
             tileUBOs.reserve(count);
         }
 
-        tileUBOs.emplace_back(shaders::ClipUBO{clipMatrixForTile(tileID), stencilID});
+        tileUBOs.emplace_back(shaders::ClipUBO{.matrix = clipMatrixForTile(tileID), .stencil_ref = stencilID});
     }
 
     if (!tileUBOs.empty()) {
@@ -425,12 +427,12 @@ bool PaintParameters::renderTileClippingMasks(const RenderTiles& sourceTiles) {
                            *renderPass,
                            gfx::Triangles(),
                            gfx::DepthMode::disabled(),
-                           gfx::StencilMode{gfx::StencilMode::Always{},
-                                            stencilID,
-                                            0b11111111,
-                                            gfx::StencilOpType::Keep,
-                                            gfx::StencilOpType::Keep,
-                                            gfx::StencilOpType::Replace},
+                           gfx::StencilMode{.test = gfx::StencilMode::Always{},
+                                            .ref = stencilID,
+                                            .mask = 0b11111111,
+                                            .fail = gfx::StencilOpType::Keep,
+                                            .depthFail = gfx::StencilOpType::Keep,
+                                            .pass = gfx::StencilOpType::Replace},
                            gfx::ColorMode::disabled(),
                            gfx::CullFaceMode::disabled(),
                            *staticData.quadTriangleIndexBuffer,
@@ -491,10 +493,11 @@ gfx::StencilMode PaintParameters::stencilModeFor3D() {
 gfx::ColorMode PaintParameters::colorModeForRenderPass() const {
     if (debugOptions & MapDebugOptions::Overdraw) {
         constexpr float overdraw = 1.0f / 8.0f;
-        return gfx::ColorMode{.blendFunction = gfx::ColorMode::Add{gfx::ColorBlendFactorType::ConstantColor,
-                                                                   gfx::ColorBlendFactorType::One},
-                              .blendColor = Color{overdraw, overdraw, overdraw, 0.0f},
-                              .mask = gfx::ColorMode::Mask{.r = true, .g = true, .b = true, .a = true}};
+        return gfx::ColorMode{
+            .blendFunction = gfx::ColorMode::Add{.srcFactor = gfx::ColorBlendFactorType::ConstantColor,
+                                                 .dstFactor = gfx::ColorBlendFactorType::One},
+            .blendColor = Color{overdraw, overdraw, overdraw, 0.0f},
+            .mask = gfx::ColorMode::Mask{.r = true, .g = true, .b = true, .a = true}};
     } else if (pass == RenderPass::Translucent) {
         return gfx::ColorMode::alphaBlended();
     } else {
