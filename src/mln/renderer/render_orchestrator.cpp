@@ -298,6 +298,12 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
         terrainEnabled ? getRenderSource(renderTerrain->getSourceID()) : nullptr,
         terrainEnabled ? renderTerrain->getExaggeration() : 1.0};
     tileParameters.elevationProvider = terrainEnabled ? &elevationProvider : nullptr;
+    // With the view pitched the finest tiles belong under the camera, where the screen is densest,
+    // not at the map centre far ahead of it: the point the mesh-tile cap measures from. Every
+    // source takes it, so they ask for what the mesh covers.
+    if (terrainEnabled) {
+        tileParameters.tileLodOrigin = RenderTerrain::meshTileCapOrigin(updateParameters->transformState);
+    }
 
     // The DEM source additionally keeps coarser ancestors of its cover loaded so that every
     // tile another layer draws from - shallower far-field LOD tiles, overzoomed sources with
