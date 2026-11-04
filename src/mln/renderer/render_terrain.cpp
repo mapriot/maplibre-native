@@ -857,10 +857,13 @@ float RenderTerrain::getElevation(const UnwrappedTileID& tileID_, float x, float
     const float xInDem = (off.dx * util::EXTENT + x) / off.scale;
     const float yInDem = (off.dy * util::EXTENT + y) / off.scale;
 
-    // Bilinear interpolation of the DEM texels, as in maplibre-gl-js Terrain.getDEMElevation
+    // Bilinear interpolation of the DEM texels, as in maplibre-gl-js Terrain.getDEMElevation.
+    // Pixel i holds the height of its cell, centred at (i + 0.5) / dim, where hillshade and
+    // color-relief draw it (gl-js #8420), so a point maps to pixel coordinate uv * dim - 0.5.
+    // Within half a pixel of the tile's edge that reaches into the backfilled border.
     const float dim = static_cast<float>(demData.dim);
-    const float px = util::clamp(xInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
-    const float py = util::clamp(yInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
+    const float px = util::clamp(xInDem / util::EXTENT * dim - 0.5f, -0.5f, dim - 0.5f);
+    const float py = util::clamp(yInDem / util::EXTENT * dim - 0.5f, -0.5f, dim - 0.5f);
     const auto x0 = static_cast<int32_t>(std::floor(px));
     const auto y0 = static_cast<int32_t>(std::floor(py));
     const float fx = px - static_cast<float>(x0);
@@ -937,8 +940,9 @@ std::optional<std::function<float(const Point<float>&)>> RenderTerrain::elevatio
     return [demData, off, exaggeration, dim](const Point<float>& p) -> float {
         const float xInDem = (off.dx * util::EXTENT + p.x) / off.scale;
         const float yInDem = (off.dy * util::EXTENT + p.y) / off.scale;
-        const float px = util::clamp(xInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
-        const float py = util::clamp(yInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
+        // At the DEM pixel centres, as getElevation samples.
+        const float px = util::clamp(xInDem / util::EXTENT * dim - 0.5f, -0.5f, dim - 0.5f);
+        const float py = util::clamp(yInDem / util::EXTENT * dim - 0.5f, -0.5f, dim - 0.5f);
         const auto x0 = static_cast<int32_t>(std::floor(px));
         const auto y0 = static_cast<int32_t>(std::floor(py));
         const float fx = px - static_cast<float>(x0);
